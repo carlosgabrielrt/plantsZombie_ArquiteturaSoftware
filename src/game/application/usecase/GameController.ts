@@ -40,6 +40,7 @@ class GameControllerImpl {
   private ranking: RankingRepository = new LocalStorageRankingRepository();
   private sunTimer: ReturnType<typeof setInterval> | null = null;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
+  private spawnTimers: ReturnType<typeof setTimeout>[] = [];
 
   setRankingRepository(repo: RankingRepository) {
     this.ranking = repo;
@@ -123,8 +124,10 @@ class GameControllerImpl {
     // 5s  → 2 zumbis juntos (início)
     // 30s → 1 zumbi | 55s → 1 zumbi | 80s → 1 zumbi
     if (this.state.phase === 1) {
+      const phaseSnapshot = this.state.phase; // guarda a fase no momento do registro
       const spawnZombie = (count = 1) => {
         if (this.state.gameOver || !this.state.started) return;
+        if (this.state.phase !== phaseSnapshot) return; // descarta se a fase mudou
         for (let i = 0; i < count; i++) {
           if (this.state.phaseZombiesSpawned >= 5) break;
           const z = ZombieFactory.create("NORMAL", 2, COLS - 1);
@@ -134,21 +137,23 @@ class GameControllerImpl {
         }
         this.notify();
       };
-      setTimeout(() => spawnZombie(2),  5_000); // 1º e 2º — 5s (dupla inicial)
-      setTimeout(() => spawnZombie(1), 30_000); // 3º — 30s
-      setTimeout(() => spawnZombie(1), 55_000); // 4º — 55s
-      setTimeout(() => spawnZombie(1), 80_000); // 5º — 80s
+      this.spawnTimers.push(setTimeout(() => spawnZombie(2),  5_000)); // 1º e 2º — 5s
+      this.spawnTimers.push(setTimeout(() => spawnZombie(1), 30_000)); // 3º — 30s
+      this.spawnTimers.push(setTimeout(() => spawnZombie(1), 55_000)); // 4º — 55s
+      this.spawnTimers.push(setTimeout(() => spawnZombie(1), 80_000)); // 5º — 80s
     } else if (this.state.phase === 2) {
+      const phaseSnapshot = this.state.phase; // guarda a fase no momento do registro
       const pool: ZombieType[] = [
         ...Array(10).fill("NORMAL"),
         ...Array(5).fill("GIRL")
-      ].sort(() => Math.random() - 0.5); // Sorteio (embaralha os 15)
+      ].sort(() => Math.random() - 0.5);
 
       const spawnZombie = (count = 1) => {
         if (this.state.gameOver || !this.state.started) return;
+        if (this.state.phase !== phaseSnapshot) return; // descarta se a fase mudou
         for (let i = 0; i < count; i++) {
           if (this.state.phaseZombiesSpawned >= 15 || pool.length === 0) break;
-          const row = Math.floor(Math.random() * 3) + 1; // 1, 2, or 3
+          const row = Math.floor(Math.random() * 3) + 1;
           const type = pool.pop()!;
           const z = ZombieFactory.create(type, row, COLS - 1);
           z.action = "walk";
@@ -157,19 +162,49 @@ class GameControllerImpl {
         }
         this.notify();
       };
-      // Spawn 15 zombies over time
-      setTimeout(() => spawnZombie(2),  5_000);
-      setTimeout(() => spawnZombie(3), 20_000);
-      setTimeout(() => spawnZombie(3), 40_000);
-      setTimeout(() => spawnZombie(3), 60_000);
-      setTimeout(() => spawnZombie(4), 80_000);
+      this.spawnTimers.push(setTimeout(() => spawnZombie(2),  5_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(3), 20_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(3), 40_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(3), 60_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(4), 80_000));
+    } else if (this.state.phase === 3) {
+      // Fase 3 – Era Glacial: 25 zumbis (15 NORMAL + 10 GIRL) em todas as 5 lanes
+      const phaseSnapshot = this.state.phase; // guarda a fase no momento do registro
+      const pool: ZombieType[] = [
+        ...Array(15).fill("NORMAL"),
+        ...Array(10).fill("GIRL")
+      ].sort(() => Math.random() - 0.5);
+
+      const spawnZombie = (count = 1) => {
+        if (this.state.gameOver || !this.state.started) return;
+        if (this.state.phase !== phaseSnapshot) return; // descarta se a fase mudou
+        for (let i = 0; i < count; i++) {
+          if (this.state.phaseZombiesSpawned >= 25 || pool.length === 0) break;
+          const row = Math.floor(Math.random() * ROWS); // linhas 0 a 4
+          const type = pool.pop()!;
+          const z = ZombieFactory.create(type, row, COLS - 1);
+          z.action = "walk";
+          this.state.zombies.push(z);
+          this.state.phaseZombiesSpawned++;
+        }
+        this.notify();
+      };
+      this.spawnTimers.push(setTimeout(() => spawnZombie(3),  5_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(4), 20_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(4), 35_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(5), 50_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(5), 65_000));
+      this.spawnTimers.push(setTimeout(() => spawnZombie(4), 80_000));
     }
   }
   private stopTimers() {
     if (this.sunTimer) clearInterval(this.sunTimer);
     if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+    // Cancela todos os timeouts de spawn pendentes
+    this.spawnTimers.forEach((id) => clearTimeout(id));
     this.sunTimer = null;
     this.cleanupTimer = null;
+    this.spawnTimers = [];
   }
 
   collectFallingSun(id: number) {
@@ -193,6 +228,7 @@ class GameControllerImpl {
   canPlant(type: PlantType, row: number, col: number) {
     if (this.state.phase === 1 && row !== 2) return false;
     if (this.state.phase === 2 && (row < 1 || row > 3)) return false;
+    // Fase 3: todas as 5 linhas estão ativas, sem restrição de row
     
     const spec = PLANT_SPECS[type];
     if (this.state.sun < spec.cost) return false;
@@ -271,6 +307,11 @@ class GameControllerImpl {
             } else if (this.state.phase === 2) {
               this.state.phaseZombiesDefeated++;
               if (this.state.phaseZombiesDefeated >= 15) {
+                this.endPhase();
+              }
+            } else if (this.state.phase === 3) {
+              this.state.phaseZombiesDefeated++;
+              if (this.state.phaseZombiesDefeated >= 25) {
                 this.endPhase();
               }
             }

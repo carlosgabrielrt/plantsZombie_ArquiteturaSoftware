@@ -10,6 +10,7 @@ import { EventBus } from "@/game/infrastructure/events/EventBus";
 import { PhaseInfoModal } from "./PhaseInfoModal";
 import fundoFase1 from "@/assets/fundo-fase-1-cemiterio.png";
 import fundoFase2 from "@/assets/fundo-fase-2-egito.png";
+import fundoFase3 from "@/assets/fundo-fase-3-glacial.png";
 
 const PLANT_ORDER: PlantType[] = ["PEASHOOTER", "SUNFLOWER", "WALLNUT"];
 
@@ -70,10 +71,11 @@ export function GameScreen() {
     <div
       className="min-h-screen text-emerald-50 p-4"
       style={{
-        backgroundImage: `url(${state.phase === 1 ? fundoFase1 : fundoFase2})`,
+        backgroundImage: `url(${state.phase === 1 ? fundoFase1 : state.phase === 2 ? fundoFase2 : fundoFase3})`,
         backgroundSize: 'cover',
-        backgroundPosition: 'center',
+        backgroundPosition: 'center 40%',
         backgroundRepeat: 'no-repeat',
+        backgroundAttachment: 'local',
       }}
     >
       {/* HUD */}
@@ -117,7 +119,7 @@ export function GameScreen() {
         </div>
       </div>
 
-      <div className="max-w-[1400px] mx-auto grid grid-cols-[300px_1fr] gap-4">
+      <div className="max-w-[1400px] mx-auto grid grid-cols-[300px_1fr] gap-4" style={{ marginTop: '-8px' }}>
 
         {/* Log — lado esquerdo */}
         <div className={`transition-all duration-300 ${logOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
@@ -151,6 +153,7 @@ export function GameScreen() {
                 const flash = flashes.has(key);
                 const isProjRow = projectiles.some((p) => p.row === row);
                 const isInactive = (state.phase === 1 && row !== 2) || (state.phase === 2 && (row < 1 || row > 3));
+                // Fase 3: todas as 5 linhas estão ativas (isInactive sempre false)
                 return (
                   <div
                     key={key}
@@ -279,15 +282,15 @@ export function GameScreen() {
           {/* Stage + barra de progresso — lado direito */}
           <div className="flex flex-col items-end gap-1 min-w-[220px]">
             <div className="font-arcade text-amber-300 text-[18px]">
-              {state.phase === 1 ? 'Fase 1 – Cemitério' : 'Fase 2 – Egito'}
+              {state.phase === 1 ? 'Fase 1 – Cemitério' : state.phase === 2 ? 'Fase 2 – Egito' : 'Fase 3 – Era Glacial'}
             </div>
             <div className="w-full h-4 bg-black/80 rounded-full border border-emerald-900/50 relative overflow-hidden">
               <div
                 className="h-full bg-gradient-to-r from-emerald-700 to-emerald-400 transition-all duration-1000"
-                style={{ width: `${(state.phaseZombiesDefeated / (state.phase === 1 ? 5 : 15)) * 100}%` }}
+                style={{ width: `${(state.phaseZombiesDefeated / (state.phase === 1 ? 5 : state.phase === 2 ? 15 : 25)) * 100}%` }}
               />
               <div className="absolute inset-0 flex items-center justify-center font-arcade text-[7px] text-white/80 mix-blend-difference">
-                ZUMBIS DERROTADOS: {state.phaseZombiesDefeated} / {state.phase === 1 ? 5 : 15}
+                ZUMBIS DERROTADOS: {state.phaseZombiesDefeated} / {state.phase === 1 ? 5 : state.phase === 2 ? 15 : 25}
               </div>
             </div>
           </div>
@@ -309,7 +312,7 @@ export function GameScreen() {
         open={victoryOpen}
         onRestart={() => {
           setVictoryOpen(false);
-          if (GameController.getState().phase === 1) {
+          if (GameController.getState().phase < 3) {
             GameController.nextPhase();
           } else {
             GameController.reset();
@@ -394,7 +397,7 @@ function PhaseCompletedModal({ open, onRestart }: { open: boolean; onRestart: ()
           onClick={onRestart}
           className="w-full bg-emerald-600 hover:bg-emerald-500 font-arcade text-xs py-3 rounded-xl"
         >
-          {state.phase === 1 ? "➡️ IR PARA FASE 2" : "🔄 JOGAR NOVAMENTE"}
+          {state.phase < 3 ? `➡️ IR PARA FASE ${state.phase + 1}` : "🔄 JOGAR NOVAMENTE"}
         </button>
       </div>
     </div>
