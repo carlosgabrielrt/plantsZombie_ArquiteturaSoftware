@@ -134,7 +134,7 @@ export function GameScreen() {
             .inactive-row { background: #2b2b2b; background-image: repeating-linear-gradient(45deg, #3a3a3a, #3a3a3a 2px, #2b2b2b 2px, #2b2b2b 4px); background-size: 8px 8px; }
           `}</style>
           <div
-            className="relative rounded-2xl overflow-hidden border-4 border-amber-900/60 shadow-2xl"
+            className="relative rounded-2xl overflow-hidden border-4 border-transparent shadow-2xl"
           >
             <div
               className="grid"
@@ -307,6 +307,11 @@ export function GameScreen() {
           setOverOpen(false);
           GameController.reset();
         }}
+        onRetry={(cost) => {
+          if (GameController.retryPhase(cost)) {
+            setOverOpen(false);
+          }
+        }}
       />
       <PhaseCompletedModal
         open={victoryOpen}
@@ -334,10 +339,15 @@ function HpBar({ hp, max }: { hp: number; max: number }) {
   );
 }
 
-function GameOverModal({ open, onRestart }: { open: boolean; onRestart: () => void }) {
+function GameOverModal({ open, onRestart, onRetry }: { open: boolean; onRestart: () => void; onRetry: (cost: number) => void }) {
   const state = GameController.getState();
   const top = GameController.getRanking(5);
   if (!open) return null;
+
+  const canRetry = state.phase >= 2;
+  const retryCost = state.phase === 2 ? 600 : state.phase === 3 ? 1200 : 0;
+  const hasEnoughSun = state.sun >= retryCost;
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-gradient-to-b from-red-950 to-zinc-950 border border-red-500/40 rounded-2xl max-w-md w-full p-6 pop-in text-center">
@@ -361,11 +371,24 @@ function GameOverModal({ open, onRestart }: { open: boolean; onRestart: () => vo
             </div>
           ))}
         </div>
+        {canRetry && (
+          <button
+            onClick={() => {
+              if (hasEnoughSun) {
+                onRetry(retryCost);
+              }
+            }}
+            disabled={!hasEnoughSun}
+            className={`w-full font-arcade text-xs py-3 rounded-xl mb-3 ${hasEnoughSun ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-emerald-900/50 text-emerald-200/30 cursor-not-allowed'}`}
+          >
+            🔄 NOVA TENTATIVA (-{retryCost} ☀️)
+          </button>
+        )}
         <button
           onClick={onRestart}
-          className="w-full bg-emerald-600 hover:bg-emerald-500 font-arcade text-xs py-3 rounded-xl"
+          className="w-full bg-zinc-700 hover:bg-zinc-600 font-arcade text-xs py-3 rounded-xl"
         >
-          🔄 JOGAR NOVAMENTE
+          🏠 VOLTAR AO MENU
         </button>
       </div>
     </div>

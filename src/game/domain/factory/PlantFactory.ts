@@ -27,7 +27,7 @@ export const PLANT_SPECS: Record<PlantType, PlantSpec> = {
   },
   SUNFLOWER: {
     type: "SUNFLOWER",
-    name: "Sol",
+    name: "Girassol",
     emoji: "🌻",
     hp: 1500,
     cost: 50,
@@ -44,14 +44,14 @@ export const PLANT_SPECS: Record<PlantType, PlantSpec> = {
 };
 
 export class PlantFactory {
-  static create(type: PlantType, row: number, col: number): Plant {
+  static create(type: PlantType, row: number, col: number, hpOverride?: number, damageOverride?: number): Plant {
     const spec = PLANT_SPECS[type];
     const strategy =
       type === "PEASHOOTER"
-        ? new PeaShootStrategy(20)
+        ? new PeaShootStrategy(damageOverride ?? 20)
         : type === "SUNFLOWER"
           ? new SunGenerationStrategy(25)
           : new NoAttackStrategy();
-    return new Plant(spec.type, spec.name, spec.emoji, spec.hp, spec.cost, strategy, row, col);
+    return new Plant(spec.type, spec.name, spec.emoji, hpOverride ?? spec.hp, spec.cost, strategy, row, col);
   }
 }

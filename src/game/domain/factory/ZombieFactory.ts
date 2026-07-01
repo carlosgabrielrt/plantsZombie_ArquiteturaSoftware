@@ -20,8 +20,8 @@ export const ZOMBIE_SPECS: Record<ZombieType, ZombieSpec> = {
 };
 
 export class ZombieFactory {
-  static create(type: ZombieType, row: number, col: number): Zombie {
+  static create(type: ZombieType, row: number, col: number, hpOverride?: number, biteOverride?: number, speedOverride?: number): Zombie {
     const s = ZOMBIE_SPECS[type];
-    return new Zombie(s.type, s.name, s.hp, s.speed, s.bite, s.points, row, col);
+    return new Zombie(s.type, s.name, hpOverride ?? s.hp, speedOverride ?? s.speed, biteOverride ?? s.bite, s.points, row, col);
   }
 }

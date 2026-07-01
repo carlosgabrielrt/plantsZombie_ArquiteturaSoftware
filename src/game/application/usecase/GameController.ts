@@ -84,21 +84,24 @@ class GameControllerImpl {
     this.notify();
   }
 
+  private scheduleNextFallingSun(delay: number) {
+    if (this.sunTimer) clearTimeout(this.sunTimer as any);
+    this.sunTimer = setTimeout(() => {
+      if (this.state.gameOver || !this.state.started) return;
+      this.state.fallingSuns.push({
+        id: sunId++,
+        x: 10 + Math.random() * 80,
+        spawnedAt: Date.now(),
+        ttl: 8000,
+      });
+      this.notify();
+    }, delay) as any;
+  }
+
   private startTimers() {
     this.stopTimers();
-    // a cada 25s spawna 2 sóis caindo
-    this.sunTimer = setInterval(() => {
-      if (this.state.gameOver || !this.state.started) return;
-      for (let i = 0; i < 2; i++) {
-        this.state.fallingSuns.push({
-          id: sunId++,
-          x: 10 + Math.random() * 80,
-          spawnedAt: Date.now(),
-          ttl: 8000,
-        });
-      }
-      this.notify();
-    }, 25_000);
+    // Inicia a cadeia de sóis (gera o primeiro após 5 segundos)
+    this.scheduleNextFallingSun(5000);
     this.cleanupTimer = setInterval(() => {
       const now = Date.now();
       const before = this.state.fallingSuns.length;
@@ -112,6 +115,12 @@ class GameControllerImpl {
       );
       // resetar shaking das plantas
       this.state.plants.forEach((p) => (p.shaking = false));
+      
+      if (before > this.state.fallingSuns.length) {
+        // Sol expirou sem ser coletado, agenda o próximo para evitar softlock
+        this.scheduleNextFallingSun(5000);
+      }
+
       if (
         before !== this.state.fallingSuns.length ||
         beforeZ !== this.state.zombies.length
@@ -130,7 +139,7 @@ class GameControllerImpl {
         if (this.state.phase !== phaseSnapshot) return; // descarta se a fase mudou
         for (let i = 0; i < count; i++) {
           if (this.state.phaseZombiesSpawned >= 5) break;
-          const z = ZombieFactory.create("NORMAL", 2, COLS - 1);
+          const z = ZombieFactory.create("NORMAL", 2, COLS - 1, 150, 20);
           z.action = "walk";
           this.state.zombies.push(z);
           this.state.phaseZombiesSpawned++;
@@ -155,7 +164,10 @@ class GameControllerImpl {
           if (this.state.phaseZombiesSpawned >= 15 || pool.length === 0) break;
           const row = Math.floor(Math.random() * 3) + 1;
           const type = pool.pop()!;
-          const z = ZombieFactory.create(type, row, COLS - 1);
+          let hp = undefined, bite = undefined, speed = undefined;
+          if (type === "NORMAL") { hp = 500; bite = 25; }
+          else if (type === "GIRL") { hp = 700; bite = 25; speed = 1.0; }
+          const z = ZombieFactory.create(type, row, COLS - 1, hp, bite, speed);
           z.action = "walk";
           this.state.zombies.push(z);
           this.state.phaseZombiesSpawned++;
@@ -168,11 +180,12 @@ class GameControllerImpl {
       this.spawnTimers.push(setTimeout(() => spawnZombie(3), 60_000));
       this.spawnTimers.push(setTimeout(() => spawnZombie(4), 80_000));
     } else if (this.state.phase === 3) {
-      // Fase 3 – Era Glacial: 25 zumbis (15 NORMAL + 10 GIRL) em todas as 5 lanes
+      // Fase 3 – Era Glacial: 25 zumbis
       const phaseSnapshot = this.state.phase; // guarda a fase no momento do registro
       const pool: ZombieType[] = [
-        ...Array(15).fill("NORMAL"),
-        ...Array(10).fill("GIRL")
+        ...Array(12).fill("NORMAL"),
+        ...Array(8).fill("GIRL"),
+        ...Array(5).fill("CONE")
       ].sort(() => Math.random() - 0.5);
 
       const spawnZombie = (count = 1) => {
@@ -182,7 +195,11 @@ class GameControllerImpl {
           if (this.state.phaseZombiesSpawned >= 25 || pool.length === 0) break;
           const row = Math.floor(Math.random() * ROWS); // linhas 0 a 4
           const type = pool.pop()!;
-          const z = ZombieFactory.create(type, row, COLS - 1);
+          let hp = undefined, bite = undefined, speed = undefined;
+          if (type === "NORMAL") { hp = 800; bite = 30; }
+          else if (type === "GIRL") { hp = 1000; bite = 30; speed = 1.0; }
+          else if (type === "CONE") { hp = 1300; bite = 20; }
+          const z = ZombieFactory.create(type, row, COLS - 1, hp, bite, speed);
           z.action = "walk";
           this.state.zombies.push(z);
           this.state.phaseZombiesSpawned++;
@@ -212,6 +229,8 @@ class GameControllerImpl {
     if (idx < 0) return;
     this.state.fallingSuns.splice(idx, 1);
     this.addSun(50);
+    // Após coletar, permite a geração do próximo
+    this.scheduleNextFallingSun(5000);
     EventBus.emit("SUN_COLLECTED", { amount: 50 });
     this.notify();
   }
@@ -239,7 +258,17 @@ class GameControllerImpl {
   placePlant(type: PlantType, row: number, col: number): boolean {
     if (!this.canPlant(type, row, col)) return false;
     const spec = PLANT_SPECS[type];
-    const plant = PlantFactory.create(type, row, col);
+    let hp = undefined, damage = undefined;
+    if (this.state.phase === 2) {
+      if (type === "PEASHOOTER") { hp = 180; damage = 25; }
+      else if (type === "SUNFLOWER") { hp = 160; }
+      else if (type === "WALLNUT") { hp = 450; }
+    } else if (this.state.phase === 3) {
+      if (type === "PEASHOOTER") { hp = 270; damage = 30; }
+      else if (type === "SUNFLOWER") { hp = 180; }
+      else if (type === "WALLNUT") { hp = 700; }
+    }
+    const plant = PlantFactory.create(type, row, col, hp, damage);
     this.state.sun -= spec.cost;
     this.state.plants.push(plant);
     EventBus.emit("PLANT_PLACED", { plant, row, col });
@@ -269,8 +298,6 @@ class GameControllerImpl {
   processTurn() {
     if (this.state.gameOver || !this.state.started) return;
     this.state.turn += 1;
-    // 1) renda passiva
-    this.addSun(10);
 
     const attackedCells: string[] = [];
     const damagedCells: string[] = [];
@@ -333,12 +360,14 @@ class GameControllerImpl {
         // morde
         z.action = "attack";
         let damage = z.biteDamage;
-        if (z.type === "NORMAL") {
-          if (here.type === "PEASHOOTER") damage = 20;
-          else if (here.type === "WALLNUT" || here.type === "SUNFLOWER") damage = 20;
-        } else {
-          // Mantém a regra anterior para outros zumbis caso ataquem a Noz
-          if (here.type === "WALLNUT") damage = 20;
+        if (this.state.phase !== 2 && this.state.phase !== 3) {
+          if (z.type === "NORMAL") {
+            if (here.type === "PEASHOOTER") damage = 20;
+            else if (here.type === "WALLNUT" || here.type === "SUNFLOWER") damage = 20;
+          } else {
+            // Mantém a regra anterior para outros zumbis caso ataquem a Noz
+            if (here.type === "WALLNUT") damage = 20;
+          }
         }
         here.takeDamage(damage);
         damagedCells.push(`${here.row}-${here.col}`);
@@ -369,6 +398,21 @@ class GameControllerImpl {
     this.state.gameOver = false;
     this.notify();
     this.startTimers();
+  }
+
+  retryPhase(cost: number): boolean {
+    if (this.state.sun < cost) return false;
+    this.state.sun -= cost;
+    this.stopTimers();
+    this.state.phaseZombiesSpawned = 0;
+    this.state.phaseZombiesDefeated = 0;
+    this.state.plants = [];
+    this.state.zombies = [];
+    this.state.fallingSuns = [];
+    this.state.gameOver = false;
+    this.notify();
+    this.startTimers();
+    return true;
   }
 
   private endPhase() {
